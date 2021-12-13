@@ -1,0 +1,58 @@
+---
+title: "475 Final Project"
+output: html_document
+---
+
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(ggmap)
+library(ggthemes)
+
+measures2 <- setDT(user_measures_20211103_20211129_1)
+positions2 <- setDT(user_positions_20211103_20211129_1)
+setkey( positions2, date )
+names(measures2)[names(measures2) == "date (UTC)"] <- "date"
+setkey( measures2, date )
+combined2 <- positions2[ measures2, roll = "nearest" ]
+
+combined2$AQI <- pmax(combined2$`VOC (Plume AQI)`, combined2$`NO2 (Plume AQI)`,combined2$`pm 10 (Plume AQI)`,combined2$`pm 2.5 (Plume AQI)`,combined2$`pm 1 (Plume AQI)`)
+
+pullman_map <- get_stamenmap(
+    bbox = c(left = -117.19, bottom = 46.71, right = -117.14, top = 46.75), 
+    maptype = "terrain",
+    zoom = 12)
+    
+ggmap(pullman_map) + 
+    geom_point(data = combined2, 
+               aes(x = combined2$longitude, y = combined2$latitude,color = -combined2$AQI),
+               alpha = .5, 
+               size = 2)
+
+combined2 %>%
+    mutate(day = date(date), hour = hour(date)) %>%
+    group_by(day, hour) %>%
+    summarize(VOC_day = mean(`VOC (Plume AQI)`),NO2_day = mean(`NO2 (Plume AQI)`),pm10_day = mean(`pm 10 (Plume AQI)`), pm2.5_day = mean(`pm 2.5 (Plume AQI)`),pm1_day = mean(`pm 1 (Plume AQI)`)) -> combined2aggregation2
+
+combined2aggregation2$AQI <- pmax(combined2aggregation2$VOC_day, combined2aggregation2$NO2_day,combined2aggregation2$pm10_day,combined2aggregation2$pm2.5_day,combined2aggregation2$pm1_day)
+
+combined2aggregation2[c(175:195, 380:428, 476:499, 524:534), ] -> combined2aggregation2home
+
+aggregate(.~combined2aggregation2home$hour, FUN=mean, data=combined2aggregation2home) -> averageseachhourhome
+
+barplot(averageseachhourhome$AQI,names.arg= averageseachhourhome$hour, main = "Average AQI each hour of the day",col="skyblue",
+        xlab="Hours of the day", ylab="Average AQI",)
+
+aggregate(.~combined2aggregation2$hour, FUN=mean, data=combined2aggregation2) -> averageseachhour
+
+barplot(averageseachhour$AQI,names.arg= averageseachhour$hour, main = "Average AQI each hour of the day",col="skyblue",
+        xlab="Hours of the day", ylab="Average AQI",)
+
+combined2aggregation2$day_and_hour = paste0(combined2aggregation2$day,"-",combined2aggregation2$hour)
+
+ggplot(combined2aggregation2, aes(combined2aggregation2$day_and_hour, combined2aggregation2$AQI, group = 1)) +
+    geom_point() +
+    labs(x = "Hours through November", y = "Plume AQI", 
+         title = "Plume AQI over time")
